@@ -1,0 +1,590 @@
+|******************************************************************************
+|* tsextdll000030  0  VRC E50X 1  ex01
+|* UI DLL for Updating Parameters History Tables
+|* cgupta
+|* 21-02-22 [05:19]
+|******************************************************************************
+|* Script Type: Library
+|******************************************************************************
+|*	Rev.No. 2  tsE50X1ex01  19 Mar 21 cgupta
+|* ID   : EXDEV20.146857
+|* NAME : Chetan Gupta
+|* DATE : 19th March, 2021
+|* DESC : Service Parameter History Development.
+|* *****************************************************************
+|* Created new common utility UI - DLL to update Parameter History
+|* session from any source Parameter session.
+|*	Rev.No. 3  tsE50X1ex01  23 Mar 21 cgupta
+|* ID   : EXDEV20.146857
+|* NAME : Chetan Gupta
+|* DATE : 23rd March, 2021
+|* DESC : Service Parameter History Development.
+|* *****************************************************************
+|* Created new common utility UI - DLL to update Parameter History
+|* session from any source Parameter session.
+|*	Rev.No. 4  tsE50X1ex01  23 Mar 21 cgupta
+|* ID   : EXDEV20.146857
+|* NAME : Chetan Gupta
+|* DATE : 23rd March, 2021
+|* DESC : Service Parameter History Development.
+|* *****************************************************************
+|* Created new common utility UI - DLL to update Parameter History
+|* session from any source Parameter session.
+|******************************************************************************
+#ident "@(#)tsextdll000030  tsE50X1ex01  EETCLD-ALPHA03  Rev.No. 5  23 Mar 21  cgupta"
+#ident "@(#) 1, SL146857, Chetan Gupta, 2021-03-23"
+#ident "@(#) 1, SL146857, Chetan Gupta, 2021-03-23"
+
+
+	|* Tables Define's
+	table   tttaad121		|* Packages by Package Combination
+	table	tttadv111		|* Maintain Package VRC's
+	table	tttadv422		|* Table Fields
+	table   ttsext816		|* Parameter History
+	table   ttsext817		|* Parameter Session
+
+	|* Include ALL library
+	#include <bic_text>
+	#include <bic_dam>
+	#include <bic_interface>
+
+	|* MACRO Define's
+	#define SPACE				chr$(32)			|* " "
+	#define DASH				chr$(45)			|* "-"
+	#define UNDERSCORE			chr$(95)			|* "_"
+	#define COMMA				chr$(44)			|* ","
+	#define PIPE				chr$(124)			|* "|"
+	#define BACKSLASH			chr$(92)			|* "\"
+	#define FORWARDSLASH			chr$(47)			|* "/"
+	#define DOT				chr$(46)			|* "."
+	#define CARRAIGE_RETURN			chr$(13)			|* "\r"
+	#define NEW_LINE			chr$(10)			|* "\n"
+
+	#define	MAX_LINE_BUFFER			4096
+	#define INVALID_INDEX			-30
+
+	#define tsextdll000030.OLD_VAL		1
+	#define tsextdll000030.NEW_VAL		2
+
+	#define	TOOLS_COMPANY			000
+
+	|* Variables define for this DLL
+	extern	long			tsextdll000030.no.of.table.field
+	extern  long			tsextdll000030.table.field.name.length
+	extern  long			tsextdll000030.old.val.length
+	extern  long			tsextdll000030.new.val.length
+
+	extern	domain 	tcmcs.str17	tsextdll000030.table.field.name(1) based
+	extern	domain 	tcmcs.str999m	tsextdll000030.old.val(1)  	   based
+	extern 	domain 	tcmcs.str999m	tsextdll000030.new.val(1)          based
+
+|******************************** All functions ********************************
+
+function extern domain tcbool tsextdll000030.ui.update.param.hist.if.any.field.updated(
+					domain tcncmp	   	i.comp.no,
+					domain tsext.ogmd  	i.orig,
+					domain tccwoc		i.department,
+					domain tcsess	   	i.parameter.sess,
+					domain ttadv.cpac  	i.table.package,
+					domain ttadv.cmod  	i.table.module,
+					domain ttadv.flno  	i.table.number,
+				ref     domain tcmcs.str132m	o.err.msg)
+{
+	DllUsage
+	Expl:	This function will update Parameter History Session
+	        (tsext8516m000)/table(tsext816) for any source parameter
+		session and make entry to the session Parameter Session List
+		(tsext8517m000). Currently this function does not support for
+		updating table fields history with BAAN standard list of data
+		type which are as follows.
+			i)   DB.COMBINED
+		        ii)  DB.RAW
+		        iii) DB.BITSET
+                        iv)  DB.MAIL
+	Pre:	This function must be only call in "main.table.io:" section in
+		its "before.rewrite:" section of any 4GL UI script.
+		Note, calling this function in any other section of UI/Scripts,
+		it may give error.
+		Also, make sure you don't have DAL/DAL2 for your UI script
+		maintable, else main.table.io: section will not work. Thus, if
+		you have DAL/DAL2 script then use similar function available in
+		Dll tsextdll000025
+		    `tsextdll000025.dal.update.param.hist.if.any.field.updated`
+	Post:	NA
+	Input: 	i.comp.no 	 - Company No.
+		i.orig 		 - Origin of Parameter session. (eg. service,
+				   parts, rental, etc.)
+		i.department 	 - Department/Office if applicable.
+		i.parameter.sess - Parameter session code for which you want to
+		                   update history.
+		i.table.package  - Table Package(main table of parameter session)
+		i.table.module   - Table module(main table of parameter session)
+		i.table.number   - Table Number(main table of parameter session)
+        Output: o.err.msg 	 - Error message if any error occured during
+				   updation/insertion
+	Return: True - If updating History was successful
+		False - If error occurs.
+	EndDllUsage
+
+
+	long			l.no.of.field.updated
+	long 			l.ret.val
+	long			l.field.no
+	string			l.field.name(17)
+	domain	tcmcs.str132m	l.err.msg
+	domain	tcmcs.str132m	l.ret.err.msg
+	domain  tcmcs.str999m   l.ret.field.desc
+	domain 	ttadv.vers	l.ret.table.vers
+	domain 	ttadv.rele	l.ret.table.rele
+	domain 	ttadv.cust	l.ret.table.cust
+
+	l.no.of.field.updated = 0
+	l.ret.val = 0
+	l.field.name = ""
+	l.err.msg = ""
+
+	l.ret.table.vers = ""
+	l.ret.table.rele = ""
+	l.ret.table.cust = ""
+	l.ret.err.msg = ""
+
+	o.err.msg = ""
+
+	if tsextdll000025.get.vers.rele.cust.for.table(
+|	if tsextdll000025.get.vers.rele.cust.for.table2(
+					i.table.package,
+					i.table.module,
+					i.table.number,
+					l.ret.table.vers,
+					l.ret.table.rele,
+					l.ret.table.cust,
+					l.ret.err.msg) then
+
+		|* Read table definition for input table and package combination
+		select	ttadv422.*
+		from	ttadv422
+		where	ttadv422._index1 = {:i.table.package,
+					    :i.table.module,
+					    :i.table.number,
+					    :l.ret.table.vers,
+				            :l.ret.table.rele,
+					    :l.ret.table.cust}
+		and 	ttadv422.comb <> ttyeno.yes
+		and	ttadv422._compnr = TOOLS_COMPANY
+		selectdo
+			l.field.name = tsextdll000025.get.table.field.desc(
+							ttadv422.cpac,
+							ttadv422.cmod,
+							ttadv422.flno,
+							ttadv422.fdnm)
+
+			|* This check if current table field was updated or not.
+			if dal.is.field.changed(trim$(l.field.name)) then
+
+				if l.no.of.field.updated = 0 then
+					init()
+				endif
+
+				#pragma nowarnings
+				on.old.occ(
+					tsextdll000030.store.table.old.value,
+						l.field.name)
+
+				if tsextdll000030.store.table.new.value(
+						l.field.name) then
+					l.no.of.field.updated = l.no.of.field.updated + 1
+				endif
+			endif
+		endselect
+	else
+		o.err.msg = l.ret.err.msg
+		return	(false)
+	endif
+
+	|* Update Parameter Session List (tsext8517m000)
+	select	tsext817.*
+	from	tsext817
+	where   tsext817._index1 = {:i.orig, :i.parameter.sess}
+	selectdo
+	selectempty
+		l.ret.val = 0
+		l.err.msg = ""
+
+		l.ret.val = dal.new.object("tsext817")
+
+		l.ret.field.desc = tt.session.desc(i.parameter.sess, l.ret.field.desc, language$)
+
+		if l.ret.val = 0 then
+			dal.set.field("tsext817.orgn", i.orig)
+			dal.set.field("tsext817.sncd", i.parameter.sess)
+			dal.set.field("tsext817.snam", l.ret.field.desc)
+
+			l.ret.val = dal.save.object("tsext817", DB.RETURN.ERROR)
+		endif
+
+		if l.ret.val <> 0 then
+			if dal.get.error.message(l.err.msg) = -1 then
+				|* Error getting dal message
+			endif
+
+			o.err.msg = l.err.msg
+
+			return	(false)
+		endif
+	endselect
+
+	|* Checking condition for no. of fields got updated.
+	if  l.no.of.field.updated > 0
+	and l.no.of.field.updated = tsextdll000030.no.of.table.field then
+
+		|* Update Parameter History for no. of fields got updated on the
+		|* Parameter session.
+		for l.field.no = 1 to tsextdll000030.no.of.table.field
+
+			l.ret.val = 0
+			l.err.msg = ""
+
+			l.ret.val = dal.new.object("tsext816")
+
+			l.ret.field.desc = tt.field.desc(
+						trim$(tsextdll000030.table.field.name(1, l.field.no)),
+						l.ret.field.desc)
+
+			if l.ret.val = 0 then
+				dal.set.field("tsext816.ncmp", i.comp.no)
+				dal.set.field("tsext816.orgn", i.orig)
+				dal.set.field("tsext816.offc", i.department)
+				dal.set.field("tsext816.pmse", i.parameter.sess)
+				dal.set.field("tsext816.pmtr", trim$(l.ret.field.desc))
+				dal.set.field("tsext816.prnm", trim$(tsextdll000030.table.field.name(1, l.field.no)))
+				dal.set.field("tsext816.ogvl", trim$(tsextdll000030.old.val(1, l.field.no)))
+				dal.set.field("tsext816.mdvl", trim$(tsextdll000030.new.val(1, l.field.no)))
+
+				l.ret.val = dal.save.object("tsext816", DB.RETURN.ERROR)
+			endif
+
+			if l.ret.val <> 0 then
+				if dal.get.error.message(l.err.msg) = -1 then
+					|* Error getting dal message
+				endif
+
+				o.err.msg = l.err.msg
+
+				break
+			endif
+		endfor
+
+		free.all.allocated.memory()
+	endif
+
+	return	((l.ret.val = 0) ? true : false )
+}
+
+function boolean tsextdll000030.store.table.old.value(
+					domain  tcmcs.str17	i.field.name)
+{
+	return	(store.table.value(tsextdll000030.OLD_VAL, i.field.name))
+}
+
+function boolean tsextdll000030.store.table.new.value(
+					domain  tcmcs.str17	i.field.name)
+{
+	return	(store.table.value(tsextdll000030.NEW_VAL, i.field.name))
+}
+
+function boolean store.table.value(long		   	i.value.type,
+				   domain  tcmcs.str17	i.field.name)
+{
+		long 			l.id
+		long			l.ret.type
+		long			l.ret.stat
+
+		string  		l.expression(MAX_LINE_BUFFER)
+		string 			l.ret.string
+
+		domain  tcmcs.str14 	l.ret.domain
+
+	|* Variables used for expression compilation, they must be explicitly
+	|* Extern.
+
+	#pragma nowarnings
+	extern	domain 	tcmcs.str999m	tsextdll000030.new.str.val
+	extern	domain 	tcmcs.str999m	tsextdll000030.old.str.val
+	extern	long 			tsextdll000030.date
+	extern	long 			tsextdll000030.time.date
+	extern	long 			tsextdll000030.enum
+
+	tsextdll000030.new.str.val = ""
+	tsextdll000030.old.str.val = ""
+	tsextdll000030.date = 0
+	tsextdll000030.time.date = 0
+	tsextdll000030.enum = 0
+
+	l.ret.stat = tsextdll000025.get.table.field.details(
+						i.field.name,
+						l.ret.domain,
+						l.ret.type)
+
+	on case l.ret.type
+	case 	DB.ENUM:
+		get.var( pid, i.field.name, tsextdll000030.enum)
+
+		on case i.value.type
+		case	tsextdll000030.NEW_VAL:
+			tsextdll000030.new.str.val = trim$(enum.descr$(
+								l.ret.domain,
+								ltoe(tsextdll000030.enum)))
+			break
+		case	tsextdll000030.OLD_VAL:
+			tsextdll000030.old.str.val = trim$(enum.descr$(
+								l.ret.domain,
+								ltoe(tsextdll000030.enum)))
+			break
+		endcase
+
+		break
+
+	case	DB.BYTE:
+	case	DB.DOUBLE:
+	case	DB.INTEGER:
+	case	DB.LONG:
+	case	DB.FLOAT:
+	case	DB.STRING:
+	case	DB.MULTIBYTE:
+	case 	DB.TEXT:
+
+		on case i.value.type
+		case	tsextdll000030.NEW_VAL:
+			l.expression = sprintf$(" tsextdll000030.new.str.val := str(%s) ", i.field.name)
+			break
+		case	tsextdll000030.OLD_VAL:
+			l.expression = sprintf$(" tsextdll000030.old.str.val := str(%s) ", i.field.name)
+			break
+		endcase
+
+		l.id = expr.compile(trim$(l.expression))
+		l.ret.string = s.expr$(l.id)
+		expr.free(l.id)
+
+		break
+
+	case	DB.DATE:
+
+		l.expression = sprintf$(" tsextdll000030.date := %s ", i.field.name )
+		l.id = expr.compile(trim$(l.expression))
+		l.ret.string = s.expr$(l.id)
+		expr.free(l.id)
+
+		on case i.value.type
+		case	tsextdll000030.NEW_VAL:
+			tsextdll000030.new.str.val = sprintf$("%D(%02m/%02d/%04Y)", tsextdll000030.date)
+			break
+		case	tsextdll000030.OLD_VAL:
+			tsextdll000030.old.str.val = sprintf$("%D(%02m/%02d/%04Y)", tsextdll000030.date)
+			break
+		endcase
+
+		break
+
+	case 	DB.TIME:
+
+		l.expression = sprintf$(" tsextdll000030.time.date := %s ", i.field.name )
+		l.id = expr.compile(trim$(l.expression))
+		l.ret.string = s.expr$(l.id)
+		expr.free(l.id)
+
+		on case i.value.type
+		case	tsextdll000030.NEW_VAL:
+			tsextdll000030.new.str.val = sprintf$("%u(%02m/%02d/%04Y) %U(%02h:%02m:%02s %a)",
+						          tsextdll000030.time.date,
+							  tsextdll000030.time.date)
+			break
+		case	tsextdll000030.OLD_VAL:
+			tsextdll000030.old.str.val = sprintf$("%u(%02m/%02d/%04Y) %U(%02h:%02m:%02s %a)",
+			                                  tsextdll000030.time.date,
+							  tsextdll000030.time.date)
+			break
+		endcase
+
+		break
+
+	|* Currently function will return false if following data types case
+	|* present at the input.
+	case 	DB.COMBINED:
+	case 	DB.RAW:
+	case 	DB.BITSET:
+	case 	DB.MAIL:
+		return	(false)
+	default:
+ 		return	(false)
+	endcase
+
+
+	on case i.value.type
+	case	tsextdll000030.NEW_VAL:
+		return	(add.or.update.field.value(
+				i.value.type,
+				i.field.name,
+				tsextdll000030.new.str.val))
+	case	tsextdll000030.OLD_VAL:
+		return	(add.or.update.field.value(
+				i.value.type,
+				i.field.name,
+				tsextdll000030.old.str.val))
+	endcase
+
+	return	(true)
+}
+
+function boolean add.or.update.field.value(
+				long		 	i.value.type,
+				domain tcmcs.str17 	i.field.name,
+				domain tcmcs.str999m 	i.value)
+{
+	long 			l.mem.stat
+	long			l.tab.field.index
+
+	l.tab.field.index = get.table.field.index.in.list(i.field.name)
+
+	if  l.tab.field.index = INVALID_INDEX then
+
+		tsextdll000030.no.of.table.field = tsextdll000030.no.of.table.field + 1
+
+		l.mem.stat = alloc.mem(	tsextdll000030.table.field.name,
+					tsextdll000030.table.field.name.length ,
+					tsextdll000030.no.of.table.field )
+
+		if l.mem.stat <> 0 then
+
+		|	mess("tdexts0121", 1)
+			|* Error in handling memory. Please contact e-emphasys support.
+			tsextdll000030.no.of.table.field = tsextdll000030.no.of.table.field - 1
+
+			return	(false)
+		endif
+
+		l.mem.stat = alloc.mem(	tsextdll000030.new.val,
+					tsextdll000030.new.val.length,
+					tsextdll000030.no.of.table.field )
+
+		if l.mem.stat <> 0 then
+
+		|	mess("tdexts0121", 1)
+			|* Error in handling memory. Please contact e-emphasys support.
+			tsextdll000030.no.of.table.field = tsextdll000030.no.of.table.field - 1
+
+			return	(false)
+		endif
+
+		l.mem.stat = alloc.mem(	tsextdll000030.old.val,
+					tsextdll000030.old.val.length,
+					tsextdll000030.no.of.table.field	)
+
+		if l.mem.stat <> 0 then
+
+		|	mess("tdexts0121", 1)
+			|* Error in handling memory. Please contact e-emphasys support.
+			tsextdll000030.no.of.table.field = tsextdll000030.no.of.table.field - 1
+
+			return	(false)
+		endif
+
+		|* Initialize all the variables
+		tsextdll000030.table.field.name(1, tsextdll000030.no.of.table.field) = i.field.name	|* Please do not use trim$() for this, else QSS search will give error.
+													|* As we have kept fixed type for QSS index search.
+
+		on case i.value.type
+		case	tsextdll000030.NEW_VAL:
+			tsextdll000030.new.val(1, tsextdll000030.no.of.table.field) = strip$(i.value)
+			break
+		case	tsextdll000030.OLD_VAL:
+			tsextdll000030.old.val(1, tsextdll000030.no.of.table.field) = strip$(i.value)
+			break
+		endcase
+	else
+		|* Initialize all the variables
+		tsextdll000030.table.field.name(1, l.tab.field.index) = i.field.name	|* Please do not use trim$() for this, else QSS search will give error.
+											|* As we have kept fixed type for QSS index search.
+
+		on case i.value.type
+		case	tsextdll000030.NEW_VAL:
+			tsextdll000030.new.val(1, l.tab.field.index) = strip$(i.value)
+			break
+		case	tsextdll000030.OLD_VAL:
+			tsextdll000030.old.val(1, l.tab.field.index) = strip$(i.value)
+			break
+		endcase
+	endif
+
+	return	(true)
+}
+
+function long get.table.field.index.in.list(
+				domain tcmcs.str17 i.name.of.table.field)
+{
+	long			l.found.index
+	long			l.search.def(1, 4)
+	domain tcmcs.str17 	l.name.of.table.field.to.be.srch	fixed
+
+	|* If there is no data in the array.
+	if tsextdll000030.no.of.table.field = 0 then
+		return	(INVALID_INDEX)
+	endif
+
+	l.name.of.table.field.to.be.srch = i.name.of.table.field
+
+	qss.start(l.search.def, 1, 1)
+        qss.type(l.search.def, 1, DB.STRING)
+        qss.length(l.search.def, 1, tsextdll000030.table.field.name.length)
+
+	l.found.index = qss.search(	QSS.EQUAL,
+				   	l.name.of.table.field.to.be.srch,
+					tsextdll000030.table.field.name,
+					l.search.def  )
+
+	if l.found.index > 0 then
+		return	(l.found.index)
+	endif
+
+	return	(INVALID_INDEX)
+}
+
+function void init()
+{
+	tsextdll000030.table.field.name.length = 0
+	tsextdll000030.old.val.length = 0
+	tsextdll000030.new.val.length = 0
+	tsextdll000030.no.of.table.field = 0
+
+	tsextdll000030.table.field.name.length = get.str.domain.length("tcmcs.str17")
+	tsextdll000030.old.val.length = get.str.domain.length("tcmcs.str999m")
+	tsextdll000030.new.val.length = get.str.domain.length("tcmcs.str999m")
+}
+
+function void free.all.allocated.memory()
+{
+	tsextdll000030.table.field.name.length = 0
+	tsextdll000030.old.val.length = 0
+	tsextdll000030.new.val.length = 0
+	tsextdll000030.no.of.table.field = 0
+
+	free.mem(tsextdll000030.table.field.name)
+	free.mem(tsextdll000030.old.val)
+	free.mem(tsextdll000030.new.val)
+}
+
+function long get.str.domain.length(domain tcmcs.str14 	i.domain.name)
+{
+	long	l.conv.mode.of.domain
+	long 	l.rdi.dom.stat
+	long	l.length.of.domain
+
+	l.length.of.domain = 0
+
+	l.rdi.dom.stat = rdi.domain.string(	i.domain.name,
+						l.length.of.domain,
+						l.conv.mode.of.domain    )
+
+	return	((l.rdi.dom.stat = 0) ? l.length.of.domain : 0)
+}
+|****************************** End of DLL Script ******************************
